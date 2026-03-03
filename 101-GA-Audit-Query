@@ -1,0 +1,79 @@
+WITH base_events AS (
+  SELECT
+    PARSE_DATE('%Y%m%d', event_date) AS date,
+    platform,
+    device.web_info.hostname AS hostname,
+    device.category AS device_category,
+    device.operating_system AS operating_system,
+    device.web_info.browser AS browser,
+    device.language AS device_language,
+    geo.city AS city,
+    session_traffic_source_last_click.manual_campaign.source AS session_source,
+    session_traffic_source_last_click.manual_campaign.medium AS session_medium,
+    session_traffic_source_last_click.manual_campaign.campaign_name AS session_campaign,
+    REGEXP_EXTRACT(
+      (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location'), 
+      r'^([^?]+)'
+    ) AS page_path,
+    (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS ga_session_id,
+    user_pseudo_id,
+    event_name,
+    event_timestamp,
+    COALESCE(ecommerce.purchase_revenue, 0) AS revenue
+  FROM
+     `enter.tablename_123456.events_*`
+  WHERE
+    _TABLE_SUFFIX BETWEEN '20240101' AND '20251231'
+    AND (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') IS NOT NULL
+),
+
+session_landing_pages AS (
+  SELECT
+    *,
+    FIRST_VALUE(page_path) OVER (
+      PARTITION BY user_pseudo_id, ga_session_id 
+      ORDER BY event_timestamp ASC
+    ) AS landing_page
+  FROM base_events
+)
+
+SELECT
+  -- Time Dimensions
+  date,
+  EXTRACT(YEAR FROM date) AS year,
+  EXTRACT(QUARTER FROM date) AS quarter_num,
+  CONCAT('Q', EXTRACT(QUARTER FROM date)) AS quarter_name,
+  EXTRACT(MONTH FROM date) AS month_num,
+  FORMAT_DATE('%B', date) AS month_name,
+  EXTRACT(ISOWEEK FROM date) AS iso_week,
+  -- Custom Day Logic: Monday = 1, Sunday = 7
+  CASE 
+    WHEN EXTRACT(DAYOFWEEK FROM date) = 1 THEN 7 
+    ELSE EXTRACT(DAYOFWEEK FROM date) - 1 
+  END AS day_num,
+  FORMAT_DATE('%A', date) AS day_name,
+  -- Dimensions
+  hostname,
+  device_category,
+  operating_system,
+  browser,
+  device_language,
+  city,
+  session_source,
+  session_medium,
+  session_campaign,
+  landing_page,
+  -- Performance Metrics
+  COUNT(DISTINCT user_pseudo_id) AS total_users,
+  COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS total_sessions,
+  ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))), 0), 2) AS events_per_session,
+  COUNTIF(event_name = 'purchase') AS total_purchases,
+  SUM(revenue) AS total_revenue
+FROM
+  session_landing_pages
+GROUP BY
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+ORDER BY
+  date DESC, 
+  day_num ASC, 
+  total_sessions DESC
