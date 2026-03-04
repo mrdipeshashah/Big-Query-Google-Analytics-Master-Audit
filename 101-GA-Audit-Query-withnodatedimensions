@@ -1,6 +1,5 @@
 WITH base_events AS (
   SELECT
-    PARSE_DATE('%Y%m%d', event_date) AS date,
     platform,
     device.web_info.hostname AS hostname,
     device.category AS device_category,
@@ -49,8 +48,7 @@ session_landing_pages AS (
 )
 
 SELECT
-  -- Removed all EXTRACT(YEAR/MONTH/DAY) fields
-  -- Dimensions (The 15 remaining audit pillars)
+  -- Forensic Dimensions Only (Removed all Date/Time fields)
   hostname,
   device_category,
   operating_system,
@@ -66,11 +64,15 @@ SELECT
   session_source_medium,
   session_campaign,
   landing_page,
-  -- Performance Metrics (Total for the entire date range)
+  -- Performance Metrics
   COUNT(DISTINCT user_pseudo_id) AS total_users,
   COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS total_sessions,
   ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))), 0), 2) AS events_per_session,
+  -- Purchase Audit Metrics
   COUNTIF(event_name = 'purchase') AS total_purchases,
+  COUNT(DISTINCT CASE WHEN event_name = 'purchase' THEN CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)) END) AS converted_sessions,
+  -- Duplicate Purchases (The "Refreshed Page" Indicator)
+  COUNTIF(event_name = 'purchase') - COUNT(DISTINCT CASE WHEN event_name = 'purchase' THEN CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)) END) AS duplicate_purchases,
   SUM(revenue) AS total_revenue
 FROM
   session_landing_pages
