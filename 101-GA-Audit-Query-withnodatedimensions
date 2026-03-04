@@ -1,0 +1,80 @@
+WITH base_events AS (
+  SELECT
+    PARSE_DATE('%Y%m%d', event_date) AS date,
+    platform,
+    device.web_info.hostname AS hostname,
+    device.category AS device_category,
+    device.operating_system AS operating_system,
+    device.web_info.browser AS browser,
+    device.language AS device_language,
+    geo.city AS city,
+    geo.continent AS continent,
+    geo.region AS region,
+    geo.sub_continent AS sub_continent,
+    geo.metro AS metro,
+    -- Individual Attribution
+    session_traffic_source_last_click.manual_campaign.source AS session_source,
+    session_traffic_source_last_click.manual_campaign.medium AS session_medium,
+    session_traffic_source_last_click.manual_campaign.campaign_name AS session_campaign,
+    -- The Merged Column: source-medium
+    CONCAT(
+      LOWER(COALESCE(session_traffic_source_last_click.manual_campaign.source, '(direct)')), 
+      ' / ', 
+      LOWER(COALESCE(session_traffic_source_last_click.manual_campaign.medium, '(none)'))
+    ) AS session_source_medium,
+    REGEXP_EXTRACT(
+      (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location'), 
+      r'^([^?]+)'
+    ) AS page_path,
+    (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS ga_session_id,
+    user_pseudo_id,
+    event_name,
+    event_timestamp,
+    COALESCE(ecommerce.purchase_revenue, 0) AS revenue
+  FROM
+    `enter.tablename_123456.events_*`
+  WHERE
+    _TABLE_SUFFIX BETWEEN '20240101' AND '20251231'
+    AND (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') IS NOT NULL
+),
+
+session_landing_pages AS (
+  SELECT
+    *,
+    FIRST_VALUE(page_path) OVER (
+      PARTITION BY user_pseudo_id, ga_session_id 
+      ORDER BY event_timestamp ASC
+    ) AS landing_page
+  FROM base_events
+)
+
+SELECT
+  -- Removed all EXTRACT(YEAR/MONTH/DAY) fields
+  -- Dimensions (The 15 remaining audit pillars)
+  hostname,
+  device_category,
+  operating_system,
+  browser,
+  device_language,
+  city,
+  continent,
+  region,
+  sub_continent,
+  metro,
+  session_source,
+  session_medium,
+  session_source_medium,
+  session_campaign,
+  landing_page,
+  -- Performance Metrics (Total for the entire date range)
+  COUNT(DISTINCT user_pseudo_id) AS total_users,
+  COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS total_sessions,
+  ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))), 0), 2) AS events_per_session,
+  COUNTIF(event_name = 'purchase') AS total_purchases,
+  SUM(revenue) AS total_revenue
+FROM
+  session_landing_pages
+GROUP BY
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+ORDER BY
+  total_sessions DESC
