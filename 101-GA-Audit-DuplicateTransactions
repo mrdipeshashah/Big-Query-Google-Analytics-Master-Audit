@@ -1,24 +1,31 @@
 SELECT
-  -- 1. Time & Date
+  -- 1. Date & Split Time
   EXTRACT(DATE FROM TIMESTAMP_MICROS(event_timestamp)) AS date,
-  TIMESTAMP_MICROS(event_timestamp) AS exact_timestamp,
+  FORMAT_TIMESTAMP('%H:%M:%S', TIMESTAMP_MICROS(event_timestamp)) AS transaction_event_time,
   
-  -- 2. Tech Stack & Location
-  device.web_info.browser,
-  device.category AS device_category,
-  (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location') AS page_url,
-  
-  -- 3. Session Identifier
+  -- 2. Identifiers
+  user_pseudo_id,
+  (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'transaction_id') AS transaction_id,
   (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS ga_session_id,
 
-  -- 4. Logic: Identify sessions with more than 1 purchase
+  -- 3. Device & Platform
+  device.category AS device_category,
+  device.web_info.browser AS browser,
+
+  -- 4. Time Gap Logic (Minutes since previous purchase in this session)
+  TIMESTAMP_DIFF(
+    TIMESTAMP_MICROS(event_timestamp), 
+    LAG(TIMESTAMP_MICROS(event_timestamp)) OVER (PARTITION BY (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') ORDER BY event_timestamp),
+    MINUTE
+  ) AS minutes_since_last_purchase,
+
+  -- 5. Audit Logic
   COUNT(*) OVER (PARTITION BY (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')) AS total_purchases_in_this_session
 
 FROM
-   `enter.tablename_123456.events_*`
+ `enter.tablename_123456.events_*`
 WHERE
   event_name = 'purchase'
   AND _TABLE_SUFFIX BETWEEN '20240101' AND '20251231'
--- Filter to only show the rows that belong to a "Duplicate" session
 QUALIFY total_purchases_in_this_session > 1
-ORDER BY exact_timestamp DESC
+ORDER BY ga_session_id, event_timestamp ASC
