@@ -1,0 +1,33 @@
+SELECT
+  -- Grouping ONLY by date to eliminate row inflation
+  date,
+  
+  -- 1. Volume Metrics
+  COUNT(DISTINCT user_pseudo_id) AS total_users,
+  COUNT(DISTINCT CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS total_sessions,
+  
+  -- 2. Purchase Metrics (Unique Conversions vs Total Events)
+  COUNT(DISTINCT CASE WHEN event_name = 'purchase' THEN CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)) END) AS converted_sessions,
+  COUNTIF(event_name = 'purchase') AS total_purchases,
+  
+  -- 3. Financials
+  SUM(revenue) AS total_revenue,
+
+  -- 4. Audit: Duplicate Events (The double-fires)
+  COUNTIF(event_name = 'purchase') - COUNT(DISTINCT CASE WHEN event_name = 'purchase' THEN CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)) END) AS duplicate_purchases
+
+FROM (
+  SELECT
+    PARSE_DATE('%Y%m%d', event_date) AS date,
+    user_pseudo_id,
+    (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS ga_session_id,
+    event_name,
+    COALESCE(ecommerce.purchase_revenue, 0) AS revenue
+  FROM
+    `enter.tablename_123456.events_*`
+  WHERE
+    _TABLE_SUFFIX BETWEEN '20240101' AND '20251231'
+    AND (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') IS NOT NULL
+)
+GROUP BY 1
+ORDER BY 1 DESC
