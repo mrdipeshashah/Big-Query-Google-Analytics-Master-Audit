@@ -13,8 +13,8 @@ The Google Analytics audit + dashboard is E-commerce focused but it can be tweak
 The steps required:
 
 1. Google Analytics is connected to Big Query
-3. The 2 Big Query code provided, create and save the views in Big Query
-4. Make a copy of the looker studio dashboard and connect it to the saved views
+3. The 101-GA-Audit Big Query code provided, create and save the view in Big Query
+4. Make a copy of the looker studio dashboard and connect it to the saved view
 
 # THE WATCH-OUTS
 The key Watch-Outs: 
