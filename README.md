@@ -28,7 +28,7 @@ The key Watch-Outs:
 6. The Big Query code - 101-GA-Audit-KPIs provides a daily breakdown of key metrics
 7. Conversion Rate is the only calculated metric thay will need to be added - SUM(converted_sessions)/SUM(total_sessions)
 
-# FILTERING
+# DATA FILTERING
 One of the outputs from the audit will be how to filter data to provide a better view of performance. The options would be to either filter in Biq Query (hard filter) or in Data Studio (soft filter). 
 
 Exclude In Big Query: 
